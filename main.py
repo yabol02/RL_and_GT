@@ -3,6 +3,7 @@ import random
 import time
 
 import gymnasium as gym
+import matplotlib.pyplot as plt
 import numpy as np
 from deap import algorithms, base, creator, tools
 from loky import get_reusable_executor
@@ -146,6 +147,39 @@ def evaluate_population_metrics(population) -> dict:
         "mean_std": np.mean(all_std_rewards),
     }
 
+def plot_logs(logbook: tools.Logbook) -> None:
+    gen = logbook.select("gen")
+    fit_avg = logbook.select("avg")
+    fit_std = logbook.select("std")
+    fit_max = logbook.select("max")
+    fit_min = logbook.select("min")
+    fit_median = logbook.select("median")
+
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=100)
+
+    avg = np.array(fit_avg)
+    std = np.array(fit_std)
+
+    ax.fill_between(gen, avg - std, avg + std, alpha=0.2, color='#00e676', label='Std Dev')
+    ax.plot(gen, fit_max, color='#ffeb3b', linestyle='--', linewidth=1, alpha=0.7, label='Max Reward')
+    ax.plot(gen, fit_min, color='#ff5252', linestyle='--', linewidth=1, alpha=0.7, label='Min Reward')
+    ax.plot(gen, avg, color='#00e676', linewidth=2, label='Average Reward')
+    ax.plot(gen, fit_median, color='#2196f3', linestyle='-.', linewidth=2, label='Median Reward')
+    ax.grid(True, which='major', linestyle=':', linewidth=0.5, color='gray', alpha=0.5)
+
+    ax.set_ylim(min(fit_median)-50, max(fit_max)+50)
+    
+    ax.set_xlabel('Generations', fontsize=12, fontweight='bold', labelpad=10)
+    ax.set_ylabel('Reward', fontsize=12, fontweight='bold', labelpad=10)
+    ax.set_title('Evolutionary Training: MLP on LunarLander-v3', fontsize=14, pad=20)
+
+    ax.axhline(y=200, color='white', linestyle='-', linewidth=0.8, alpha=0.3)
+    ax.text(0, 210, 'Solved Threshold (200)', color='white', alpha=0.6, fontsize=9)
+    ax.legend(loc='upper left', frameon=True, facecolor='#222222', edgecolor='gray')
+    plt.tight_layout()
+    return fig, ax
+
 def run_evolution() -> None:
     start = time.time()
     print("="*80)
@@ -197,6 +231,10 @@ def run_evolution() -> None:
         agent = create_individual(hall_of_fame[0])
         fitness, successes, mean_reward, std_reward = evaluate_individual(agent, 10, render="human")
         print(f"Test run: Reward = {fitness:.2f}, Successes = {successes}/10, Mean Reward = {mean_reward:.2f}, Std Reward = {std_reward:.2f}")
+
+        fig, ax = plot_logs(logs)
+        fig.savefig("evolution_logs.png", dpi=300)
+        plt.show()
 
         # print("Evolution logs:")
         # for gen, log in enumerate(logs):
