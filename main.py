@@ -24,17 +24,16 @@ MUTATION_INDPB = 2 / NUM_GENES
 CROSSOVER_PROB = 0.75
 MUTATION_PROB = 0.25
 TOURNAMENT_SIZE = 4
-ELITE_SIZE = 1
+ELITE_SIZE = 10
 
 NUM_EVAL_EPISODES = 5
 SUCCESS_THRESHOLD = 200.0
 
 
-
 def create_individual(genome: list[float]) -> MLP:
     """
     Creates an MLP agent from a given genome.
-    
+
     :param genome: A list of floats representing the weights and biases of the MLP.
     :return: An MLP agent created from the given genome.
     """
@@ -43,7 +42,17 @@ def create_individual(genome: list[float]) -> MLP:
     return agent
 
 
-def evaluate_individual(agent: MLP, num_episodes: int = NUM_EVAL_EPISODES, render: str | None = None) -> tuple[float]:
+def evaluate_individual(
+    agent: MLP, num_episodes: int = NUM_EVAL_EPISODES, render: str | None = None
+) -> tuple[float]:
+    """
+    Evaluates the fitness of an MLP agent by running multiple episodes in the LunarLander-v3 environment.
+
+    :param agent: The MLP agent to be evaluated
+    :param num_episodes: Number of episodes to run for evaluation (default is NUM_EVAL_EPISODES)
+    :param render: Render mode for the environment (default is None, set to "human" to visualize, or "rgb_array" for off-screen rendering)
+    :return: A tuple containing the fitness value, number of successes, mean reward, and standard deviation of rewards for the agent
+    """
     rewards = []
     successes = 0
 
@@ -56,19 +65,26 @@ def evaluate_individual(agent: MLP, num_episodes: int = NUM_EVAL_EPISODES, rende
 
     mean_reward = np.mean(rewards)
     std_reward = np.std(rewards)
-    
-    # Bonus exponencial por éxito (no funciona muy bien, el agente aprende a volar siempre y no así no se estrella salvo en casos sencillos que baja tranquilamente hasta el suelo)
+
+    # Bonus exponencial por éxito (no funciona muy bien, el agente aprende a volar siempre y así no se estrella salvo en casos sencillos que baja tranquilamente hasta el suelo)
     # success_bonus = ((successes / num_episodes) ** 2) * SUCCESS_THRESHOLD*1.5  # Bonus hasta 300 puntos
     # consistency_penalty = std_reward * 0.2  # Penalización por inconsistencia
     # fitness = mean_reward + success_bonus - consistency_penalty  # Fitness total
-    
+
     # Bonus lineal por éxitos
     success_bonus = successes * 50
     fitness = mean_reward + success_bonus - (0.1 * std_reward)
 
     return fitness, successes, mean_reward, std_reward
 
+
 def run_simulation(agent: MLP, render: str | None) -> None:
+    """
+    Runs a single episode of the LunarLander-v3 environment using the provided MLP agent.
+
+    :param agent: The MLP agent to be evaluated in the environment
+    :param render: Render mode for the environment (e.g., "human" for visualization, "rgb_array" for off-screen rendering, or None for no rendering)
+    """
     env = gym.make("LunarLander-v3", render_mode=render)
     obs, _ = env.reset()
     total_reward = 0.0
@@ -79,7 +95,7 @@ def run_simulation(agent: MLP, render: str | None) -> None:
         obs, reward, terminated, truncated, _ = env.step(action)
         total_reward += reward
         done = terminated or truncated
-    
+
     env.close()
     return total_reward
 
@@ -87,7 +103,7 @@ def run_simulation(agent: MLP, render: str | None) -> None:
 def fitness_function(genome: list[float]) -> tuple[float]:
     """
     Evaluates the fitness of an individual based on its genome.
-    
+
     :param genome: A list of floats representing the weights and biases of the MLP agent.
     :return: A tuple containing the fitness value of the individual.
     """
@@ -115,16 +131,23 @@ toolbox.register(
     func=toolbox.individual,
 )
 toolbox.register(alias="evaluate", function=fitness_function)
-toolbox.register(alias="select", function=tools.selTournament, tournsize=TOURNAMENT_SIZE)
+toolbox.register(
+    alias="select", function=tools.selTournament, tournsize=TOURNAMENT_SIZE
+)
 toolbox.register(alias="mate", function=tools.cxBlend, alpha=0.5)
 toolbox.register(
-    alias="mutate", function=tools.mutGaussian, mu=MUTATION_MU, sigma=MUTATION_SIGMA, indpb=MUTATION_INDPB
+    alias="mutate",
+    function=tools.mutGaussian,
+    mu=MUTATION_MU,
+    sigma=MUTATION_SIGMA,
+    indpb=MUTATION_INDPB,
 )
+
 
 def evaluate_population_metrics(population) -> dict:
     """
     Evaluates and aggregates metrics for a given population of individuals (only top 20 for speed).
-    
+
     :param population: List of individuals in the population
     :return: Dictionary containing aggregated metrics of the population
     """
@@ -132,14 +155,14 @@ def evaluate_population_metrics(population) -> dict:
     all_mean_rewards = []
     all_std_rewards = []
 
-    for ind in population[:min(20, len(population))]:
+    for ind in population[: min(20, len(population))]:
         agent = create_individual(ind)
         _, successes, mean_rew, std_rew = evaluate_individual(agent)
         success_rate = successes / NUM_EVAL_EPISODES
         all_success_rates.append(success_rate)
         all_mean_rewards.append(mean_rew)
         all_std_rewards.append(std_rew)
-    
+
     return {
         "mean_success_rate": np.mean(all_success_rates),
         "max_success_rate": np.max(all_success_rates),
@@ -147,7 +170,13 @@ def evaluate_population_metrics(population) -> dict:
         "mean_std": np.mean(all_std_rewards),
     }
 
+
 def plot_logs(logbook: tools.Logbook) -> None:
+    """
+    Plots the evolution of fitness metrics over generations using the logbook data.
+
+    :param logbook: The logbook object containing the recorded metrics for each generation during the evolutionary process.
+    """
     gen = logbook.select("gen")
     fit_avg = logbook.select("avg")
     fit_std = logbook.select("std")
@@ -155,44 +184,72 @@ def plot_logs(logbook: tools.Logbook) -> None:
     fit_min = logbook.select("min")
     fit_median = logbook.select("median")
 
-    plt.style.use('dark_background')
+    plt.style.use("dark_background")
     fig, ax = plt.subplots(figsize=(10, 6), dpi=100)
 
     avg = np.array(fit_avg)
     std = np.array(fit_std)
 
-    ax.fill_between(gen, avg - std, avg + std, alpha=0.2, color='#00e676', label='Std Dev')
-    ax.plot(gen, fit_max, color='#ffeb3b', linestyle='--', linewidth=1, alpha=0.7, label='Max Reward')
-    ax.plot(gen, fit_min, color='#ff5252', linestyle='--', linewidth=1, alpha=0.7, label='Min Reward')
-    ax.plot(gen, avg, color='#00e676', linewidth=2, label='Average Reward')
-    ax.plot(gen, fit_median, color='#2196f3', linestyle='-.', linewidth=2, label='Median Reward')
-    ax.grid(True, which='major', linestyle=':', linewidth=0.5, color='gray', alpha=0.5)
+    ax.fill_between(
+        gen, avg - std, avg + std, alpha=0.2, color="#00e676", label="Std Dev"
+    )
+    ax.plot(
+        gen,
+        fit_max,
+        color="#ffeb3b",
+        linestyle="--",
+        linewidth=1,
+        alpha=0.7,
+        label="Max Reward",
+    )
+    ax.plot(
+        gen,
+        fit_min,
+        color="#ff5252",
+        linestyle="--",
+        linewidth=1,
+        alpha=0.7,
+        label="Min Reward",
+    )
+    ax.plot(gen, avg, color="#00e676", linewidth=2, label="Average Reward")
+    ax.plot(
+        gen,
+        fit_median,
+        color="#2196f3",
+        linestyle="-.",
+        linewidth=2,
+        label="Median Reward",
+    )
+    ax.grid(True, which="major", linestyle=":", linewidth=0.5, color="gray", alpha=0.5)
 
-    ax.set_ylim(min(fit_median)-50, max(fit_max)+50)
-    
-    ax.set_xlabel('Generations', fontsize=12, fontweight='bold', labelpad=10)
-    ax.set_ylabel('Reward', fontsize=12, fontweight='bold', labelpad=10)
-    ax.set_title('Evolutionary Training: MLP on LunarLander-v3', fontsize=14, pad=20)
+    ax.set_ylim(min(fit_median) - 50, max(fit_max) + 50)
 
-    ax.axhline(y=200, color='white', linestyle='-', linewidth=0.8, alpha=0.3)
-    ax.text(0, 210, 'Solved Threshold (200)', color='white', alpha=0.6, fontsize=9)
-    ax.legend(loc='upper left', frameon=True, facecolor='#222222', edgecolor='gray')
+    ax.set_xlabel("Generations", fontsize=12, fontweight="bold", labelpad=10)
+    ax.set_ylabel("Reward", fontsize=12, fontweight="bold", labelpad=10)
+    ax.set_title("Evolutionary Training: MLP on LunarLander-v3", fontsize=14, pad=20)
+
+    ax.axhline(y=200, color="white", linestyle="-", linewidth=0.8, alpha=0.3)
+    ax.text(0, 210, "Solved Threshold (200)", color="white", alpha=0.6, fontsize=9)
+    ax.legend(loc="lower right", frameon=True, facecolor="#222222", edgecolor="gray")
     plt.tight_layout()
     return fig, ax
 
+
 def run_evolution() -> None:
     start = time.time()
-    print("="*80)
+    print("=" * 80)
     print("INICIANDO EVOLUCIÓN - LUNAR LANDER")
-    print("="*80)
+    print("=" * 80)
     print(f"Arquitectura: {ARCHITECTURE}")
     print(f"Población: {NUM_POPULATION}")
     print(f"Generaciones: {NUM_GENERATIONS}")
     print(f"Genes por individuo: {NUM_GENES}")
     print(f"Workers: {N_WORKERS}")
-    print(f"Mutation mu: {MUTATION_MU}, sigma: {MUTATION_SIGMA}, indpb: {MUTATION_INDPB}")
+    print(
+        f"Mutation mu: {MUTATION_MU}, sigma: {MUTATION_SIGMA}, indpb: {MUTATION_INDPB}"
+    )
     print(f"Crossover prob: {CROSSOVER_PROB}, Mutation prob: {MUTATION_PROB}")
-    print("="*80)
+    print("=" * 80)
 
     population = toolbox.population(n=NUM_POPULATION)
 
@@ -229,8 +286,12 @@ def run_evolution() -> None:
         )
 
         agent = create_individual(hall_of_fame[0])
-        fitness, successes, mean_reward, std_reward = evaluate_individual(agent, 10, render="human")
-        print(f"Test run: Reward = {fitness:.2f}, Successes = {successes}/10, Mean Reward = {mean_reward:.2f}, Std Reward = {std_reward:.2f}")
+        fitness, successes, mean_reward, std_reward = evaluate_individual(
+            agent, 10, render="human"
+        )
+        print(
+            f"Test run: Reward = {fitness:.2f}, Successes = {successes}/10, Mean Reward = {mean_reward:.2f}, Std Reward = {std_reward:.2f}"
+        )
 
         fig, ax = plot_logs(logs)
         fig.savefig("evolution_logs.png", dpi=300)
