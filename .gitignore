@@ -207,7 +207,4 @@ marimo/_lsp/
 __marimo__/
 
 # Experiment results
-experiments/*/results/
-
-test_scripts/
-tspmo.py
+experiments/*

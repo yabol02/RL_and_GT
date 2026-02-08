@@ -1,10 +1,14 @@
+import json
 import os
 import random
 import time
+from datetime import datetime
+from pathlib import Path
 
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from deap import algorithms, base, creator, tools
 from loky import get_reusable_executor
 
@@ -15,7 +19,13 @@ NUM_POPULATION = 100
 NUM_GENERATIONS = 300
 N_WORKERS = os.cpu_count() - 1 if os.cpu_count() > 1 else 1
 
-dummy_agent = MLP(ARCHITECTURE).to_chromosome()
+dummy_agent = MLP(
+    ARCHITECTURE,
+    labels=(
+        ["x", "y", "vx", "vy", "θ", "ω", "leg_L", "leg_R"],
+        ["Nothing", "Fire Left", "Fire Main", "Fire Right"],
+    ),
+).to_chromosome()
 NUM_GENES = len(dummy_agent)
 
 MUTATION_MU = 0.0
@@ -29,15 +39,208 @@ ELITE_SIZE = 10
 NUM_EVAL_EPISODES = 5
 SUCCESS_THRESHOLD = 200.0
 
+EXPERIMENTS_DIR = Path("experiments")
+RANDOM_SEED = None  # None for random, or a number for reproducibility
 
-def create_individual(genome: list[float]) -> MLP:
+
+def setup_experiment() -> Path:
+    """
+    Creates a directory for the current experiment with a timestamp.
+
+    :return: Path to the experiment directory
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    exp_dir = EXPERIMENTS_DIR / f"exp_{timestamp}"
+    exp_dir.mkdir(parents=True, exist_ok=True)
+    return exp_dir
+
+
+def save_experiment_config(exp_dir: Path) -> None:
+    """
+    Saves the experiment configuration to a JSON file.
+
+    :param exp_dir: Experiment directory
+    """
+    config = {
+        "timestamp": datetime.now().isoformat(),
+        "architecture": ARCHITECTURE,
+        "population_size": NUM_POPULATION,
+        "num_generations": NUM_GENERATIONS,
+        "num_genes": NUM_GENES,
+        "mutation": {
+            "mu": MUTATION_MU,
+            "sigma": MUTATION_SIGMA,
+            "indpb": MUTATION_INDPB,
+            "prob": MUTATION_PROB,
+        },
+        "crossover": {
+            "prob": CROSSOVER_PROB,
+            "alpha": 0.5,
+        },
+        "selection": {
+            "type": "tournament",
+            "tournament_size": TOURNAMENT_SIZE,
+        },
+        "elite_size": ELITE_SIZE,
+        "num_eval_episodes": NUM_EVAL_EPISODES,
+        "success_threshold": SUCCESS_THRESHOLD,
+        "random_seed": RANDOM_SEED,
+        "n_workers": N_WORKERS,
+    }
+
+    with open(exp_dir / "config.json", "w") as f:
+        json.dump(config, f, indent=2)
+
+
+def save_hall_of_fame(exp_dir: Path, hall_of_fame: tools.HallOfFame) -> None:
+    """
+    Saves the Hall of Fame individuals to a JSON file.
+
+    :param exp_dir: Experiment directory
+    :param hall_of_fame: Hall of Fame with the best individuals
+    """
+    hof_data = {
+        "best_individuals": [
+            {
+                "rank": i + 1,
+                "fitness": ind.fitness.values[0],
+                "genome": ind,
+            }
+            for i, ind in enumerate(hall_of_fame)
+        ]
+    }
+
+    with open(exp_dir / "hall_of_fame.json", "w") as f:
+        json.dump(hof_data, f, indent=2)
+
+
+def evaluate_final_scenarios(
+    agent: MLP, exp_dir: Path, render_mode: None | str = None
+) -> dict:
+    """
+    Evaluates the best agent in three scenarios: easy, medium, and difficult.
+
+    :param agent: MLP agent to evaluate
+    :param exp_dir: Experiment directory to save results
+    :param render_mode: Render mode for the environment (e.g., "human", "rgb_array", or None)
+    :return: Dictionary with evaluation results for each scenario
+    """
+    results = {}
+    np.random.seed(0)
+
+    # Easy scenario (normal conditions)
+    print("\nEvaluating EASY envs")
+    easy_rewards = []
+    easy_successes = 0
+    for seed in range(100):
+        env = gym.make("LunarLander-v3", render_mode=render_mode)
+        obs, _ = env.reset(seed=1000 + seed)
+        total_reward = 0.0
+        done = False
+
+        while not done:
+            action = int(np.argmax(agent.forward(obs)))
+            obs, reward, terminated, truncated, _ = env.step(action)
+            total_reward += reward
+            done = terminated or truncated
+
+        easy_rewards.append(total_reward)
+        if total_reward >= SUCCESS_THRESHOLD:
+            easy_successes += 1
+        env.close()
+
+    results["easy"] = {
+        "mean_reward": np.mean(easy_rewards),
+        "std_reward": np.std(easy_rewards),
+        "success_rate": easy_successes / 100,
+        "min_reward": np.min(easy_rewards),
+        "max_reward": np.max(easy_rewards),
+    }
+
+    # MEDIUM scenario (modified gravity between -12 and -10)
+    print("Evaluating MEDIUM envs (modified gravity)...")
+    medium_rewards = []
+    medium_successes = 0
+
+    for seed in range(100):
+        gravity_value = np.random.uniform(-12, -10)
+        env = gym.make("LunarLander-v3", gravity=gravity_value)
+        obs, _ = env.reset(seed=2000 + seed)
+        total_reward = 0.0
+        done = False
+
+        while not done:
+            action = int(np.argmax(agent.forward(obs)))
+            obs, reward, terminated, truncated, _ = env.step(action)
+            total_reward += reward
+            done = terminated or truncated
+
+        medium_rewards.append(total_reward)
+        if total_reward >= SUCCESS_THRESHOLD:
+            medium_successes += 1
+        env.close()
+
+    results["medium"] = {
+        "mean_reward": np.mean(medium_rewards),
+        "std_reward": np.std(medium_rewards),
+        "success_rate": medium_successes / 100,
+        "min_reward": np.min(medium_rewards),
+        "max_reward": np.max(medium_rewards),
+    }
+
+    # Difficult scenario (gravity and random wind between -10 and -15 + turbulence power 1.5)
+    print("Evaluating DIFFICULT envs (wind + turbulence)...")
+    difficult_rewards = []
+    difficult_successes = 0
+
+    for seed in range(100):
+        gravity_value = np.random.uniform(-15, -12)
+        wind_power = np.random.uniform(10, 12)
+        env = gym.make(
+            "LunarLander-v3",
+            wind_power=wind_power,
+            turbulence_power=1.5,
+        )
+        obs, _ = env.reset(seed=3000 + seed)
+        total_reward = 0.0
+        done = False
+
+        while not done:
+            action = int(np.argmax(agent.forward(obs)))
+            obs, reward, terminated, truncated, _ = env.step(action)
+            total_reward += reward
+            done = terminated or truncated
+
+        difficult_rewards.append(total_reward)
+        if total_reward >= SUCCESS_THRESHOLD:
+            difficult_successes += 1
+        env.close()
+
+    results["difficult"] = {
+        "mean_reward": np.mean(difficult_rewards),
+        "std_reward": np.std(difficult_rewards),
+        "success_rate": difficult_successes / 100,
+        "min_reward": np.min(difficult_rewards),
+        "max_reward": np.max(difficult_rewards),
+    }
+
+    with open(exp_dir / "final_evaluation.json", "w") as f:
+        json.dump(results, f, indent=2)
+
+    return results
+
+
+def create_individual(
+    genome: list[float], labels: tuple[list[str], list[str]] | None = None
+) -> MLP:
     """
     Creates an MLP agent from a given genome.
 
     :param genome: A list of floats representing the weights and biases of the MLP.
+    :param labels: Optional tuple of (input_labels, output_labels) for the MLP.
     :return: An MLP agent created from the given genome.
     """
-    agent = MLP(ARCHITECTURE)
+    agent = MLP(ARCHITECTURE, labels=labels)
     agent.from_chromosome(genome)
     return agent
 
@@ -171,18 +374,20 @@ def evaluate_population_metrics(population) -> dict:
     }
 
 
-def plot_logs(logbook: tools.Logbook) -> None:
+def plot_logs(logs: tools.logs, exp_dir: Path = None) -> tuple:
     """
-    Plots the evolution of fitness metrics over generations using the logbook data.
+    Plots the evolution of fitness metrics over generations using the logs data.
 
-    :param logbook: The logbook object containing the recorded metrics for each generation during the evolutionary process.
+    :param logs: The logs object containing the recorded metrics for each generation during the evolutionary process.
+    :param exp_dir: Optional directory to save the plot
+    :return: Tuple with (fig, ax)
     """
-    gen = logbook.select("gen")
-    fit_avg = logbook.select("avg")
-    fit_std = logbook.select("std")
-    fit_max = logbook.select("max")
-    fit_min = logbook.select("min")
-    fit_median = logbook.select("median")
+    gen = logs.select("gen")
+    fit_avg = logs.select("avg")
+    fit_std = logs.select("std")
+    fit_max = logs.select("max")
+    fit_min = logs.select("min")
+    fit_median = logs.select("median")
 
     plt.style.use("dark_background")
     fig, ax = plt.subplots(figsize=(10, 6), dpi=100)
@@ -232,18 +437,41 @@ def plot_logs(logbook: tools.Logbook) -> None:
     ax.text(0, 210, "Solved Threshold (200)", color="white", alpha=0.6, fontsize=9)
     ax.legend(loc="lower right", frameon=True, facecolor="#222222", edgecolor="gray")
     plt.tight_layout()
+
+    if exp_dir:
+        fig.savefig(exp_dir / "training_evolution.png", dpi=300, bbox_inches="tight")
+
     return fig, ax
 
 
 def run_evolution() -> None:
+    """
+    Executes the complete evolutionary process with an experiment management system:
+    - Saves configuration and results
+    - Records metrics every 10 generations
+    - Saves Hall of Fame
+    - Evaluates in multiple scenarios
+    - Generates visualizations
+    """
+    exp_dir = setup_experiment()
+    print("=" * 80)
+    print(f"EXPERIMENT: {exp_dir.name}")
+    print("=" * 80)
+
+    if RANDOM_SEED is not None:
+        random.seed(RANDOM_SEED)
+        np.random.seed(RANDOM_SEED)
+        print(f"Seed set: {RANDOM_SEED}")
+
+    save_experiment_config(exp_dir)
+
     start = time.time()
+    print("STARTING EVOLUTION - LUNAR LANDER")
     print("=" * 80)
-    print("INICIANDO EVOLUCIÓN - LUNAR LANDER")
-    print("=" * 80)
-    print(f"Arquitectura: {ARCHITECTURE}")
-    print(f"Población: {NUM_POPULATION}")
-    print(f"Generaciones: {NUM_GENERATIONS}")
-    print(f"Genes por individuo: {NUM_GENES}")
+    print(f"Architecture: {ARCHITECTURE}")
+    print(f"Population: {NUM_POPULATION}")
+    print(f"Generations: {NUM_GENERATIONS}")
+    print(f"Genes per individual: {NUM_GENES}")
     print(f"Workers: {N_WORKERS}")
     print(
         f"Mutation mu: {MUTATION_MU}, sigma: {MUTATION_SIGMA}, indpb: {MUTATION_INDPB}"
@@ -264,6 +492,7 @@ def run_evolution() -> None:
 
     executor = get_reusable_executor(max_workers=N_WORKERS)
     toolbox.register(alias="map", function=executor.map)
+
     try:
         population, logs = algorithms.eaMuCommaLambda(
             population,
@@ -277,29 +506,75 @@ def run_evolution() -> None:
             halloffame=hall_of_fame,
             verbose=True,
         )
-    finally:
+
         end = time.time()
-        print(f"Evolution took {end - start:.2f} seconds")
+        print("=" * 80)
+        print(f"Evolución completada en {end - start:.2f} segundos")
+        print(f"Mejor fitness: {hall_of_fame[0].fitness.values[0]:.2f}")
+        print("=" * 80)
+
+        # Logs for each 10 generations
+        metrics_data = []
+        for record in logs:
+            gen = record["gen"]
+            if gen % 10 == 0 or gen == NUM_GENERATIONS - 1:
+                metrics_data.append(
+                    {
+                        "generation": gen,
+                        "max_fitness": record["max"],
+                        "avg_fitness": record["avg"],
+                        "median_fitness": record["median"],
+                        "min_fitness": record["min"],
+                        "std_fitness": record["std"],
+                    }
+                )
+
+        df_metrics = pd.DataFrame(metrics_data)
+        df_metrics.to_csv(exp_dir / "metrics_per_generation.csv", index=False)
+
+        save_hall_of_fame(exp_dir, hall_of_fame)
+
+        fig, ax = plot_logs(logs, exp_dir)
+        plt.close(fig)
+
+        # Testing the best agent in multiple scenarios
+        print("\nEvaluating the best agent in final scenarios...")
+        best_agent = create_individual(
+            hall_of_fame[0],
+            labels=(
+                ["x", "y", "vx", "vy", "θ", "ω", "leg_L", "leg_R"],
+                ["Nothing", "Fire Left", "Fire Main", "Fire Right"],
+            ),
+        )
+        eval_results = evaluate_final_scenarios(best_agent, exp_dir)
+
+        fig_nn, ax_nn = best_agent.plot_network(figsize=(14, 10))
+        fig_nn.savefig(exp_dir / "best_network.png", dpi=300, bbox_inches="tight")
+        plt.close(fig_nn)
+
+        # Final summary
+        print("\n" + "=" * 80)
+        print("EXPERIMENT SUMMARY")
+        print("=" * 80)
+        print(f"Directory: {exp_dir}")
+        print(f"Best fitness (training): {hall_of_fame[0].fitness.values[0]:.2f}")
+        print("\nEvaluation in scenarios:")
+        print(
+            f"  Easy:    {eval_results['easy']['mean_reward']:.2f} ± {eval_results['easy']['std_reward']:.2f} "
+            f"(success: {eval_results['easy']['success_rate']*100:.0f}%)"
+        )
+        print(
+            f"  Medium:    {eval_results['medium']['mean_reward']:.2f} ± {eval_results['medium']['std_reward']:.2f} "
+            f"(success: {eval_results['medium']['success_rate']*100:.0f}%) "
+        )
+        print(
+            f"  Difficult:  {eval_results['difficult']['mean_reward']:.2f} ± {eval_results['difficult']['std_reward']:.2f} "
+            f"(success: {eval_results['difficult']['success_rate']*100:.0f}%) "
+        )
+        print(f"\nFiles saved in: {exp_dir}")
+
+    finally:
         executor.shutdown(wait=True)
-        print(
-            f"Best individual: {hall_of_fame[0]}, Fitness: {hall_of_fame[0].fitness.values[0]}"
-        )
-
-        agent = create_individual(hall_of_fame[0])
-        fitness, successes, mean_reward, std_reward = evaluate_individual(
-            agent, 10, render="human"
-        )
-        print(
-            f"Test run: Reward = {fitness:.2f}, Successes = {successes}/10, Mean Reward = {mean_reward:.2f}, Std Reward = {std_reward:.2f}"
-        )
-
-        fig, ax = plot_logs(logs)
-        fig.savefig("evolution_logs.png", dpi=300)
-        plt.show()
-
-        # print("Evolution logs:")
-        # for gen, log in enumerate(logs):
-        #     print(f"Generation {gen}: {log}")
 
 
 if __name__ == "__main__":
