@@ -1,0 +1,48 @@
+environment_name: "FlappyBird-v0"
+
+env_kwargs:
+  use_lidar: false
+
+labels: 
+  - ["last_pipe_horiz_pos", "last_top_pipe_vert_pos", "last_bottom pipe_vert_pos", "next_pipe_horiz_pos", "next_top pipe_vert_pos", "next_bottom pipe_vert_pos", "next_next pipe_horiz_pos", "next_next top pipe_vert_pos", "next_next bottom pipe_vert_pos", "players_vert_pos", "players_vert_velocity", "players_rotation"]
+  - ["do nothing", "flap"]
+
+architecture:
+  - 12
+  - 6
+  - 6
+  - 2
+
+algorithm:
+  population_size: 100
+  num_generations: 300
+
+  algorithm: "mu_comma_lambda"
+  mu: 100
+  lambda_: 200
+  
+  elite_size: 10
+  num_eval_episodes: 5
+  
+  crossover:
+    method: "blend"
+    probability: 0.75
+    alpha: 0.5
+  
+  mutation:
+    method: "gaussian"
+    probability: 0.25
+    mu: 0.0
+    sigma: 1.0
+    # indpb: 0.02
+  
+  selection:
+    method: "tournament"
+    tournsize: 4
+  
+  random_seed: null
+  n_workers: null
+  verbose: true
+
+success_threshold: 200.0
+experiments_dir: "experiments"
