@@ -1,0 +1,44 @@
+environment_name: "LunarLander-v3"
+labels: 
+  - ["x", "y", "vx", "vy", "θ", "ω", "leg_L", "leg_R"]
+  - ["Nothing", "Fire Left", "Fire Main", "Fire Right"]
+
+architecture:
+  - 8
+  - 6
+  - 4
+
+algorithm:
+  population_size: 100
+  num_generations: 300
+
+  algorithm: "mu_comma_lambda"
+  mu: 100
+  lambda_: 200
+  
+  elite_size: 10
+  num_eval_episodes: 5
+  
+  crossover:
+    method: "simulated_binary"
+    probability: 0.5
+    eta: 20.0
+  
+  mutation:
+    method: "polynomial_bounded"
+    probability: 0.4
+    eta: 20.0
+    low: -20.0
+    up: 20.0
+    # indpb: 0.02
+  
+  selection:
+    method: "tournament"
+    tournsize: 4
+  
+  random_seed: null
+  n_workers: null
+  verbose: true
+
+success_threshold: 200.0
+experiments_dir: "experiments"
