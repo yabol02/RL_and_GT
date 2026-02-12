@@ -6,11 +6,30 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "deap>=1.4.3",
-    "gymnasium>=1.2.3",
+    "flappy-bird-gymnasium>=0.4.0",
+    "gymnasium[box2d]>=1.2.3",
+    "imageio>=2.37.2",
     "ipykernel>=7.1.0",
+    "ipywidgets>=8.1.8",
     "loky>=3.5.6",
     "matplotlib>=3.10.8",
     "pandas>=3.0.0",
     "pygame>=2.6.1",
     "pyyaml>=6.0.3",
+    "torch>=2.9.1",
+    "torchvision>=0.24.1",
+    "tqdm>=4.67.3",
 ]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
