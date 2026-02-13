@@ -40,4 +40,4 @@ algorithm:
   verbose: true
 
 success_threshold: 200.0
-experiments_dir: "experiments"
+experiments_dir: "results"

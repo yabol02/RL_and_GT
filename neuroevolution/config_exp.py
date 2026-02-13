@@ -394,7 +394,7 @@ class ExperimentConfig:
     architecture: List[int] = field(default_factory=lambda: [8, 6, 4])
     algorithm: AlgorithmConfig = field(default_factory=AlgorithmConfig)
     success_threshold: float = 0.0
-    experiments_dir: Path = Path("experiments")
+    experiments_dir: Path = Path("results")
 
     def to_dict(self) -> Dict[str, Any]:
         """Converts the full configuration to a dictionary."""
