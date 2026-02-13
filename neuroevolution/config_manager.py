@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from config_exp import ExperimentConfig
+from .config_exp import ExperimentConfig
 
 
 class ConfigManager:

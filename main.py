@@ -6,7 +6,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Tuple
 
-import flappy_bird_gymnasium
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,11 +13,11 @@ import pandas as pd
 from deap import base, creator, tools
 from loky import get_reusable_executor
 
-from config_exp import (ALGORITHM_FUNCTIONS, CROSSOVER_FUNCTIONS,
-                        MUTATION_FUNCTIONS, SELECTION_FUNCTIONS,
-                        ExperimentConfig)
-from config_manager import ConfigManager
-from MLP import MLP
+from neuroevolution.config_exp import (ALGORITHM_FUNCTIONS,
+                                       CROSSOVER_FUNCTIONS, MUTATION_FUNCTIONS,
+                                       SELECTION_FUNCTIONS, ExperimentConfig)
+from neuroevolution.config_manager import ConfigManager
+from neuroevolution.MLP import MLP
 
 EXTERNAL_ENV_REGISTRY = {
     "FlappyBird": "flappy_bird_gymnasium",
@@ -403,7 +402,7 @@ class MLPExperiment:
             )
             plt.close(fig_nn)
 
-            if self.config.environment_name in "FlappyBird-v0":
+            if self.config.environment_name in "LunarLander-v3":
                 print("\nEvaluating best agent in multiple scenarios...")
                 eval_results = self._evaluate_final_scenarios(best_agent)
 
@@ -412,7 +411,7 @@ class MLPExperiment:
             print("=" * 80)
             print(f"Directory: {self.exp_dir}")
             print(f"Best fitness (training): {hall_of_fame[0].fitness.values[0]:.2f}")
-            if self.config.environment_name in "FlappyBird-v0":
+            if self.config.environment_name in "LunarLander-v3":
                 print("\nEvaluation in scenarios:")
                 for scenario, results in eval_results.items():
                     print(
@@ -429,7 +428,7 @@ class MLPExperiment:
                 "best_genome": hall_of_fame[0],
                 "evaluation_results": (
                     eval_results
-                    if self.config.environment_name in "FlappyBird-v0"
+                    if self.config.environment_name in "LunarLander-v3"
                     else None
                 ),
                 "training_time": end - start,
