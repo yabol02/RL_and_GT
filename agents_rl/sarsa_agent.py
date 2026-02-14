@@ -23,7 +23,7 @@ class SARSAAgent(BaseRLAgent):
         reward: float,
         next_state: int,
         next_action: int,
-        terminated: bool,
+        done: bool,
     ) -> None:
         """
         Update Q-value using the SARSA update rule.
@@ -38,11 +38,11 @@ class SARSAAgent(BaseRLAgent):
         :param reward: Reward received
         :param next_state: Next state
         :param next_action: Next action (actually selected by policy)
-        :param terminated: Whether episode terminated
+        :param done: Whether episode terminated
         """
         current_q = self.q_table[state][action]
 
-        if terminated:
+        if done:
             # No future rewards if episode terminated
             next_q = 0.0
         else:
@@ -64,37 +64,29 @@ class SARSAAgent(BaseRLAgent):
         :param max_steps: Maximum steps per episode
         :return: Total reward for the episode
         """
-        # Reset environment
         observation, info = self.env.reset()
         state = self._get_state(observation)
 
-        # Select initial action
         action = self.select_action_epsilon_greedy(state, epsilon)
 
         episode_reward = 0.0
 
         for step in range(max_steps):
-            # Take action
             next_observation, reward, terminated, truncated, info = self.env.step(
                 action
             )
             next_state = self._get_state(next_observation)
 
-            # Select next action using ε-greedy policy
             next_action = self.select_action_epsilon_greedy(next_state, epsilon)
 
-            # Update Q-value (on-policy update using next_action)
             self.update_q_value(
-                state, action, reward, next_state, next_action, terminated
+                state, action, reward, next_state, next_action, truncated
             )
-
             episode_reward += reward
 
-            # Check if episode ended
             if terminated or truncated:
                 break
 
-            # Move to next state-action pair
             state = next_state
             action = next_action
 

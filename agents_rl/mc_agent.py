@@ -15,22 +15,19 @@ class MonteCarloAgent(BaseRLAgent):
     - Uses actual returns (no bootstrapping)
     - Higher variance, lower bias than TD methods
     - Requires episodic tasks (must terminate)
-    - Can use first-visit or every-visit (this implements first-visit)
+    - Supports both first-visit and every-visit variants.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, use_first_visit: bool = True, **kwargs):
         """
         Initialize Monte Carlo agent.
 
-        Adds visit counter for first-visit MC.
+        :param use_first_visit: If True, use first-visit MC. If False, use every-visit MC.
+        :param args: Arguments passed to BaseRLAgent
+        :param kwargs: Keyword arguments passed to BaseRLAgent
         """
         super().__init__(*args, **kwargs)
-        # For first-visit MC: track which state-action pairs were visited
-        self.returns = {
-            (s, a): []
-            for s in range(self.state_space_size)
-            for a in range(self.action_space_size)
-        }
+        self.use_first_visit = use_first_visit
 
     def calculate_returns(
         self, trajectory: List[Tuple[int, int, float]]
@@ -48,11 +45,9 @@ class MonteCarloAgent(BaseRLAgent):
 
         # Iterate backwards through trajectory
         for state, action, reward in reversed(trajectory):
-            # Accumulate discounted return
             G = reward + self.gamma * G
             returns.append((state, action, G))
 
-        # Reverse to get chronological order
         returns.reverse()
         return returns
 
@@ -63,13 +58,11 @@ class MonteCarloAgent(BaseRLAgent):
         Update Q-values using first-visit Monte Carlo.
 
         Only updates Q(s,a) based on the first time (s,a) appears in the episode.
+        This is the most common variant in practice.
 
         :param trajectory: List of (state, action, reward) tuples from episode
         """
-        # Calculate returns for all state-action pairs
         returns = self.calculate_returns(trajectory)
-
-        # Track which state-action pairs we've seen
         visited = set()
 
         # Update Q-values for first visits only
@@ -77,13 +70,33 @@ class MonteCarloAgent(BaseRLAgent):
             sa_pair = (state, action)
 
             if sa_pair not in visited:
-                # First visit to this state-action pair
                 visited.add(sa_pair)
-
-                # Monte Carlo update
+                # Incremental Monte Carlo update: Q(s,a) <- Q(s,a) + α[G - Q(s,a)]
                 current_q = self.q_table[state][action]
-                new_q = current_q + self.learning_rate * (G - current_q)
-                self.q_table[state][action] = new_q
+                self.q_table[state][action] = current_q + self.learning_rate * (
+                    G - current_q
+                )
+
+    def update_q_values_every_visit(
+        self, trajectory: List[Tuple[int, int, float]]
+    ) -> None:
+        """
+        Update Q-values using every-visit Monte Carlo.
+
+        Updates Q(s,a) every time (s,a) appears in the episode.
+        Can converge faster but may have higher variance.
+
+        :param trajectory: List of (state, action, reward) tuples from episode
+        """
+        returns = self.calculate_returns(trajectory)
+
+        # Update Q-values for every occurrence
+        for state, action, G in returns:
+            # Incremental Monte Carlo update: Q(s,a) <- Q(s,a) + α[G - Q(s,a)]
+            current_q = self.q_table[state][action]
+            self.q_table[state][action] = current_q + self.learning_rate * (
+                G - current_q
+            )
 
     def train_episode(self, epsilon: float, max_steps: int) -> float:
         """
@@ -95,7 +108,6 @@ class MonteCarloAgent(BaseRLAgent):
         :param max_steps: Maximum steps per episode
         :return: Total reward for the episode
         """
-        # Reset environment
         observation, info = self.env.reset()
         state = self._get_state(observation)
 
@@ -104,26 +116,25 @@ class MonteCarloAgent(BaseRLAgent):
         episode_reward = 0.0
 
         for step in range(max_steps):
-            # Select action using ε-greedy policy
             action = self.select_action_epsilon_greedy(state, epsilon)
 
-            # Take action
             next_observation, reward, terminated, truncated, info = self.env.step(
                 action
             )
             next_state = self._get_state(next_observation)
 
-            # Store transition
             trajectory.append((state, action, reward))
             episode_reward += reward
 
-            # Check if episode ended
             if terminated or truncated:
                 break
 
             state = next_state
 
         # Update Q-values using full episode trajectory
-        self.update_q_values_first_visit(trajectory)
+        if self.use_first_visit:
+            self.update_q_values_first_visit(trajectory)
+        else:
+            self.update_q_values_every_visit(trajectory)
 
         return episode_reward

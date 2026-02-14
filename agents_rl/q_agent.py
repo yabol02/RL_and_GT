@@ -15,7 +15,7 @@ class QLearningAgent(BaseRLAgent):
     """
 
     def update_q_value(
-        self, state: int, action: int, reward: float, next_state: int, terminated: bool
+        self, state: int, action: int, reward: float, next_state: int, done: bool
     ) -> None:
         """
         Update Q-value using the Q-Learning update rule.
@@ -29,11 +29,11 @@ class QLearningAgent(BaseRLAgent):
         :param action: Action taken
         :param reward: Reward received
         :param next_state: Next state
-        :param terminated: Whether episode terminated
+        :param done: Whether episode terminated
         """
         current_q = self.q_table[state][action]
 
-        if terminated:
+        if done:
             # No future rewards if episode terminated
             max_next_q = 0.0
         else:
@@ -55,28 +55,22 @@ class QLearningAgent(BaseRLAgent):
         :param max_steps: Maximum steps per episode
         :return: Total reward for the episode
         """
-        # Reset environment
         observation, info = self.env.reset()
         state = self._get_state(observation)
 
         episode_reward = 0.0
 
         for step in range(max_steps):
-            # Select action using ε-greedy policy
             action = self.select_action_epsilon_greedy(state, epsilon)
 
-            # Take action
             next_observation, reward, terminated, truncated, info = self.env.step(
                 action
             )
             next_state = self._get_state(next_observation)
 
-            # Update Q-value (off-policy update)
-            self.update_q_value(state, action, reward, next_state, terminated)
-
+            self.update_q_value(state, action, reward, next_state, terminated or truncated)
             episode_reward += reward
 
-            # Check if episode ended
             if terminated or truncated:
                 break
 

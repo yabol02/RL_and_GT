@@ -200,11 +200,10 @@ class BaseRLAgent(ABC):
         :return: Selected action
         """
         if np.random.random() > epsilon:
-            # Exploitation: choose best action
-            return self.select_action_greedy(state)
+            return self.select_action_greedy(state)  # Exploitation: choose best action
         else:
-            # Exploration: choose random action
-            return self.env.action_space.sample()
+            return self.env.action_space.sample()  # Exploration: choose random action
+
 
     @abstractmethod
     def train_episode(self, epsilon: float, max_steps: int) -> float:
