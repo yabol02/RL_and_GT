@@ -154,77 +154,6 @@ class MLPExperiment:
         with open(self.exp_dir / "hall_of_fame.json", "w") as f:
             json.dump(hof_data, f, indent=2)
 
-    def _evaluate_final_scenarios(self, agent: MLP, render_mode: str = None) -> dict:
-        """Evaluates the best agent in multiple scenarios."""
-        results = {}
-        np.random.seed(0)
-
-        scenarios = {
-            "easy": {
-                "description": "Normal conditions",
-                "seeds_offset": 1000,
-                "env_params": {},
-            },
-            "medium": {
-                "description": "Modified gravity (-10 to -8)",
-                "seeds_offset": 2000,
-                "env_params": lambda: {"gravity": np.random.uniform(-10, -8)},
-            },
-            "difficult": {
-                "description": "Modified gravity + wind + turbulence",
-                "seeds_offset": 3000,
-                "env_params": lambda: {
-                    "gravity": np.random.uniform(-12, -8),
-                    "wind_power": np.random.uniform(10, 12),
-                    "turbulence_power": 1.5,
-                },
-            },
-        }
-
-        for scenario_name, scenario_info in scenarios.items():
-            print(f"\nEvaluating {scenario_name.upper()} scenario...")
-            rewards = []
-            successes = 0
-
-            for seed in range(100):
-                env_params = (
-                    scenario_info["env_params"]()
-                    if callable(scenario_info["env_params"])
-                    else scenario_info["env_params"]
-                )
-                env = gym.make(
-                    self.config.environment_name, render_mode=render_mode, **env_params
-                )
-                obs, _ = env.reset(seed=scenario_info["seeds_offset"] + seed)
-                total_reward = 0.0
-                done = False
-
-                while not done:
-                    action = int(np.argmax(agent.forward(obs)))
-                    obs, reward, terminated, truncated, _ = env.step(action)
-                    total_reward += reward
-                    done = terminated or truncated
-
-                rewards.append(total_reward)
-                if total_reward >= self.config.success_threshold:
-                    successes += 1
-
-                env.close()
-
-            results[scenario_name] = {
-                "description": scenario_info["description"],
-                "mean_reward": float(np.mean(rewards)),
-                "std_reward": float(np.std(rewards)),
-                "success_rate": successes / 100,
-                "min_reward": float(np.min(rewards)),
-                "max_reward": float(np.max(rewards)),
-            }
-
-        with open(self.exp_dir / "final_evaluation.json", "w") as f:
-            json.dump(results, f, indent=2)
-
-        return results
-
     def _plot_evolution(self, logs: tools.Logbook) -> None:
         """Generates and saves the evolution plot."""
         gen = logs.select("gen")
@@ -281,21 +210,23 @@ class MLPExperiment:
             f"Evolutionary Training {self.config.environment_name}", fontsize=14, pad=20
         )
 
-        ax.axhline(
-            y=self.config.success_threshold,
-            color="white",
-            linestyle="-",
-            linewidth=0.8,
-            alpha=0.3,
-        )
-        ax.text(
-            0,
-            self.config.success_threshold + 10,
-            f"Solved Threshold ({self.config.success_threshold})",
-            color="white",
-            alpha=0.6,
-            fontsize=9,
-        )
+        if self.config.success_threshold is not None:
+            ax.axhline(
+                y=self.config.success_threshold,
+                color="white",
+                linestyle="-",
+                linewidth=0.8,
+                alpha=0.3,
+            )
+            ax.text(
+                0,
+                self.config.success_threshold + 10,
+                f"Solved Threshold ({self.config.success_threshold})",
+                color="white",
+                alpha=0.6,
+                fontsize=9,
+            )
+
         ax.legend(
             loc="lower right", frameon=True, facecolor="#222222", edgecolor="gray"
         )
@@ -405,35 +336,16 @@ class MLPExperiment:
             )
             plt.close(fig_nn)
 
-            if self.config.environment_name in "LunarLander-v3":
-                print("\nEvaluating best agent in multiple scenarios...")
-                eval_results = self._evaluate_final_scenarios(best_agent)
-
             print("\n" + "=" * 80)
             print("EXPERIMENT SUMMARY")
             print("=" * 80)
             print(f"Directory: {self.exp_dir}")
             print(f"Best fitness (training): {hall_of_fame[0].fitness.values[0]:.2f}")
-            if self.config.environment_name in "LunarLander-v3":
-                print("\nEvaluation in scenarios:")
-                for scenario, results in eval_results.items():
-                    print(
-                        f"  {scenario.capitalize():12}: "
-                        f"{results['mean_reward']:6.2f} ± {results['std_reward']:5.2f} "
-                        f"(success: {results['success_rate']*100:3.0f}%)"
-                    )
-            print(f"\nFiles saved in: {self.exp_dir}")
-            print("=" * 80)
 
             return {
                 "exp_dir": self.exp_dir,
                 "best_fitness": hall_of_fame[0].fitness.values[0],
                 "best_genome": hall_of_fame[0],
-                "evaluation_results": (
-                    eval_results
-                    if self.config.environment_name in "LunarLander-v3"
-                    else None
-                ),
                 "training_time": end - start,
             }
 
@@ -486,16 +398,19 @@ def _create_agent(genome: list, config: ExperimentConfig) -> MLP:
 
 
 def _evaluate_agent(
-    agent: MLP, config: ExperimentConfig, num_episodes: int = None, render: str = None
+    agent: MLP,
+    config: ExperimentConfig,
+    num_episodes: int = None,
+    render: str = None,
 ) -> Tuple[float, int, float, float]:
     """
     Evaluates an agent in the environment.
 
     :param agent: MLP agent to evaluate
     :param config: Experiment configuration object
-    :param num_episodes: Number of episodes to evaluate (defaults to `config.algorithm.num_eval_episodes`)
-    :param render: Optional render mode for the environment
-    :return: Tuple with (mean_reward, successes, mean_reward, std_reward)
+    :param num_episodes: Number of episodes to evaluate
+    :param render: Optional render mode
+    :return: (fitness, successes, mean_reward, std_reward)
     """
     if num_episodes is None:
         num_episodes = config.algorithm.num_eval_episodes
@@ -503,8 +418,15 @@ def _evaluate_agent(
     rewards = []
     successes = 0
 
+    use_success_bonus = config.success_threshold is not None
+
     for _ in range(num_episodes):
-        env = gym.make(config.environment_name, render_mode=render, **config.env_kwargs)
+        env = gym.make(
+            config.environment_name,
+            render_mode=render,
+            **config.env_kwargs,
+        )
+
         obs, _ = env.reset()
         total_reward = 0.0
         done = False
@@ -516,12 +438,21 @@ def _evaluate_agent(
             done = terminated or truncated
 
         rewards.append(total_reward)
-        if total_reward >= config.success_threshold:
+
+        if use_success_bonus and total_reward >= config.success_threshold:
             successes += 1
 
         env.close()
 
-    mean_reward = np.mean(rewards)
-    std_reward = np.std(rewards)
+    mean_reward = float(np.mean(rewards))
+    std_reward = float(np.std(rewards))
 
-    return mean_reward, successes, mean_reward, std_reward
+    if not use_success_bonus:
+        fitness = mean_reward - (
+            0.1 * std_reward
+        )  # Alternativas: lower confidence bound, percentil inferior (25%), media armónica (solo con valores positivos), media de la raíz cúbica (desigualdad de Jensen)
+    else:
+        success_bonus = successes * config.success_threshold / num_episodes
+        fitness = mean_reward + success_bonus - (0.1 * std_reward)
+
+    return fitness, successes, mean_reward, std_reward
