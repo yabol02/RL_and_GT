@@ -68,7 +68,9 @@ class QLearningAgent(BaseRLAgent):
             )
             next_state = self._get_state(next_observation)
 
-            self.update_q_value(state, action, reward, next_state, terminated or truncated)
+            self.update_q_value(
+                state, action, reward, next_state, terminated or truncated
+            )
             episode_reward += reward
 
             if terminated or truncated:

@@ -7,11 +7,17 @@ import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
 
-from agents_rl import (MonteCarloAgent, ObservationDiscretizer, QLearningAgent,
-                       SARSAAgent)
+from agents_rl import (
+    MonteCarloAgent,
+    ObservationDiscretizer,
+    QLearningAgent,
+    SARSAAgent,
+)
 
 
-def plot_training_results(episode_rewards: np.ndarray, save_path: str, window_size: int = 100) -> None:
+def plot_training_results(
+    episode_rewards: np.ndarray, save_path: str, window_size: int = 100
+) -> None:
     """
     Plot training results with moving average.
 
@@ -160,7 +166,7 @@ def main(config: Config) -> None:
     print("Starting training...\n")
     start = datetime.now().strftime("%Y%m%d_%H%M%S")
     save_path = f"results/{config.environment_name}/{config.algorithm}_{start}"
-    os.makedirs(save_path, exist_ok=True)   
+    os.makedirs(save_path, exist_ok=True)
     episode_rewards = agent.train(
         n_episodes=config.n_training_episodes, max_steps=config.max_steps, verbose=True
     )
@@ -194,7 +200,7 @@ def main(config: Config) -> None:
     plot_training_results(episode_rewards, save_path, window_size=100)
 
     # Save Q-table
-    agent.save(save_path+"/q_table.pkl")
+    agent.save(save_path + "/q_table.pkl")
 
     # Demonstrate learned policy
     print("\nDemonstrating learned policy (first 5 episodes):")

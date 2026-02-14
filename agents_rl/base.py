@@ -204,7 +204,6 @@ class BaseRLAgent(ABC):
         else:
             return self.env.action_space.sample()  # Exploration: choose random action
 
-
     @abstractmethod
     def train_episode(self, epsilon: float, max_steps: int) -> float:
         """

@@ -13,9 +13,13 @@ import pandas as pd
 from deap import base, creator, tools
 from loky import get_reusable_executor
 
-from neuroevolution.config_exp import (ALGORITHM_FUNCTIONS,
-                                       CROSSOVER_FUNCTIONS, MUTATION_FUNCTIONS,
-                                       SELECTION_FUNCTIONS, ExperimentConfig)
+from neuroevolution.config_exp import (
+    ALGORITHM_FUNCTIONS,
+    CROSSOVER_FUNCTIONS,
+    MUTATION_FUNCTIONS,
+    SELECTION_FUNCTIONS,
+    ExperimentConfig,
+)
 from neuroevolution.MLP import MLP
 
 EXTERNAL_ENV_REGISTRY = {
