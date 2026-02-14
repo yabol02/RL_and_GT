@@ -12,7 +12,7 @@ algorithm:
   population_size: 100
   num_generations: 300
 
-  algorithm: "mu_comma_lambda"
+  algorithm: "mu_plus_lambda"
   mu: 100
   lambda_: 200
   
@@ -22,19 +22,19 @@ algorithm:
   crossover:
     method: "simulated_binary"
     probability: 0.5
-    eta: 20.0
+    eta: 15.0
   
   mutation:
     method: "polynomial_bounded"
-    probability: 0.4
-    eta: 20.0
+    probability: 0.5
+    eta: 15.0
     low: -20.0
     up: 20.0
     # indpb: 0.02
   
   selection:
     method: "tournament"
-    tournsize: 4
+    tournsize: 3
   
   random_seed: null
   n_workers: null

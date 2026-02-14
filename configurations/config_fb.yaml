@@ -2,6 +2,7 @@ environment_name: "FlappyBird-v0"
 
 env_kwargs:
   use_lidar: false
+  normalize_obs: true
 
 labels: 
   - ["last_pipe_horiz_pos", "last_top_pipe_vert_pos", "last_bottom pipe_vert_pos", "next_pipe_horiz_pos", "next_top pipe_vert_pos", "next_bottom pipe_vert_pos", "next_next pipe_horiz_pos", "next_next top pipe_vert_pos", "next_next bottom pipe_vert_pos", "players_vert_pos", "players_vert_velocity", "players_rotation"]
@@ -44,5 +45,5 @@ algorithm:
   n_workers: null
   verbose: true
 
-success_threshold: 200.0
+success_threshold: null
 experiments_dir: "results"
