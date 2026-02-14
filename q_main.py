@@ -159,7 +159,7 @@ def main(config: Config) -> None:
     # Train agent
     print("Starting training...\n")
     start = datetime.now().strftime("%Y%m%d_%H%M%S")
-    save_path = f"results/{config.environment_name}/{config.algorithm}/exp_{start}"
+    save_path = f"results/{config.environment_name}/{config.algorithm}_{start}"
     os.makedirs(save_path, exist_ok=True)   
     episode_rewards = agent.train(
         n_episodes=config.n_training_episodes, max_steps=config.max_steps, verbose=True
@@ -272,7 +272,7 @@ if __name__ == "__main__":
         epsilon_end=0.05,  # Minimum probability of choosing a random action at the end of training
         epsilon_decay=0.0005,  # Decay rate for epsilon (how quickly it decreases)
         n_eval_episodes=100,  # Number of evaluation episodes
-        n_bins=10,  # Number of bins for discretization (only for continuous observation spaces)
+        n_bins=11,  # Number of bins for discretization (only for continuous observation spaces)
     )
 
     main(config)
