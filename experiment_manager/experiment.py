@@ -13,21 +13,21 @@ import pandas as pd
 from deap import base, creator, tools
 from loky import get_reusable_executor
 
-from neuroevolution.config_exp import (
+from .config_exp import (
     ALGORITHM_FUNCTIONS,
     CROSSOVER_FUNCTIONS,
     MUTATION_FUNCTIONS,
     SELECTION_FUNCTIONS,
     ExperimentConfig,
 )
-from neuroevolution.MLP import MLP
+from .MLP import MLP
 
 EXTERNAL_ENV_REGISTRY = {
     "FlappyBird": "flappy_bird_gymnasium",
 }
 
 
-class MLPExperiment:
+class NeuroevolutionExperiment:
     """Manages a complete evolutionary training experiment."""
 
     def __init__(self, config: ExperimentConfig):
@@ -50,13 +50,7 @@ class MLPExperiment:
 
     def _setup_deap(self) -> None:
         """Configures DEAP toolbox and types based on the experiment configuration."""
-        dummy_agent = MLP(
-            self.config.architecture,
-            labels=(
-                ["x", "y", "vx", "vy", "θ", "ω", "leg_L", "leg_R"],
-                ["Nothing", "Fire Left", "Fire Main", "Fire Right"],
-            ),
-        ).to_chromosome()
+        dummy_agent = MLP(self.config.architecture).to_chromosome()
         self.num_genes = len(dummy_agent)
 
         if not hasattr(creator, "FitnessMax"):

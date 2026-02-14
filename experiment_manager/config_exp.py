@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -58,7 +59,7 @@ class SelectionMethod(Enum):
     CUSTOM = "custom"  # For user-defined selection functions
 
 
-class AlgorithmMethod(Enum):
+class NeurAlgMethod(Enum):
     """Evolutionary algorithms available in DEAP."""
 
     SIMPLE = "simple"
@@ -66,6 +67,14 @@ class AlgorithmMethod(Enum):
     MU_COMMA_LAMBDA = "mu_comma_lambda"
     GENERATE_UPDATE = "generate_update"
     CUSTOM = "custom"  # For user-defined evolutionary algorithms
+
+
+class RLAlgMethod(Enum):
+    """Classic RL algorithms supported in this project."""
+
+    Q_LEARNING = "q_learning"
+    MONTE_CARLO = "monte_carlo"
+    SARSA = "sarsa"
 
 
 # Mapping of enums to DEAP functions
@@ -114,11 +123,11 @@ SELECTION_FUNCTIONS = {
 }
 
 ALGORITHM_FUNCTIONS = {
-    AlgorithmMethod.SIMPLE: algorithms.eaSimple,
-    AlgorithmMethod.MU_PLUS_LAMBDA: algorithms.eaMuPlusLambda,
-    AlgorithmMethod.MU_COMMA_LAMBDA: algorithms.eaMuCommaLambda,
-    AlgorithmMethod.GENERATE_UPDATE: algorithms.eaGenerateUpdate,
-    AlgorithmMethod.CUSTOM: None,
+    NeurAlgMethod.SIMPLE: algorithms.eaSimple,
+    NeurAlgMethod.MU_PLUS_LAMBDA: algorithms.eaMuPlusLambda,
+    NeurAlgMethod.MU_COMMA_LAMBDA: algorithms.eaMuCommaLambda,
+    NeurAlgMethod.GENERATE_UPDATE: algorithms.eaGenerateUpdate,
+    NeurAlgMethod.CUSTOM: None,
 }
 
 
@@ -247,11 +256,63 @@ class SelectionConfig:
 
 @dataclass
 class AlgorithmConfig:
+    """Base configuration for algorithms classes"""
+
+    def _to_serializable_dict(self, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Hook for subclass-specific serialization."""
+        return config_dict
+
+    @classmethod
+    def _from_serializable_dict(cls, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Hook for subclass-specific deserialization."""
+        return config_dict
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Converts the algorithm configuration to a dictionary."""
+        return self._to_serializable_dict(asdict(self))
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "AlgorithmConfig":
+        """Creates an instance of the algorithm configuration from a dictionary."""
+        normalized_config = cls._from_serializable_dict(deepcopy(config_dict))
+        return cls(**normalized_config)
+
+    def save_json(self, filepath: Path | str) -> None:
+        """Saves the configuration to a JSON file."""
+        filepath = Path(filepath)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+    def save_yaml(self, filepath: Path | str) -> None:
+        """Saves the configuration to a YAML file."""
+        filepath = Path(filepath)
+        with open(filepath, "w", encoding="utf-8") as f:
+            yaml.dump(self.to_dict(), f, default_flow_style=False)
+
+    @classmethod
+    def load_json(cls, filepath: Path | str) -> "AlgorithmConfig":
+        """Loads the configuration from a JSON file."""
+        filepath = Path(filepath)
+        with open(filepath, "r", encoding="utf-8") as f:
+            config_dict = json.load(f)
+        return cls.from_dict(config_dict)
+
+    @classmethod
+    def load_yaml(cls, filepath: Path | str) -> "AlgorithmConfig":
+        """Loads the configuration from a YAML file."""
+        filepath = Path(filepath)
+        with open(filepath, "r", encoding="utf-8") as f:
+            config_dict = yaml.safe_load(f)
+        return cls.from_dict(config_dict)
+
+
+@dataclass
+class NeurEvConfig(AlgorithmConfig):
     """Full configuration for running an evolutionary algorithm experiment."""
 
     population_size: int = 100
     num_generations: int = 300
-    algorithm: AlgorithmMethod = AlgorithmMethod.MU_COMMA_LAMBDA
+    algorithm: NeurAlgMethod = NeurAlgMethod.MU_COMMA_LAMBDA
     crossover: CrossoverConfig = field(default_factory=CrossoverConfig)
     mutation: MutationConfig = field(default_factory=MutationConfig)
     selection: SelectionConfig = field(default_factory=SelectionConfig)
@@ -276,11 +337,8 @@ class AlgorithmConfig:
         if self.lambda_ is None:
             self.lambda_ = self.population_size * 2
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Converts the configuration to a serializable dictionary."""
-        config_dict = asdict(self)
-
-        # Convert enums to strings
+    def _to_serializable_dict(self, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Converts enum fields to serializable values."""
         config_dict["algorithm"] = self.algorithm.value
         config_dict["crossover"]["method"] = self.crossover.method.value
         config_dict["mutation"]["method"] = self.mutation.method.value
@@ -289,15 +347,10 @@ class AlgorithmConfig:
         return config_dict
 
     @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "AlgorithmConfig":
-        """
-        Creates an instance of AlgorithmConfig from a dictionary.
-
-        :param config_dict: A dictionary containing the configuration parameters. It should have the same structure as the one produced by `to_dict()`.
-        :return: An instance of AlgorithmConfig with the parameters set according to the provided dictionary.
-        """
+    def _from_serializable_dict(cls, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Converts serializable values to enum/dataclass fields."""
         if "algorithm" in config_dict:
-            config_dict["algorithm"] = AlgorithmMethod(config_dict["algorithm"])
+            config_dict["algorithm"] = NeurAlgMethod(config_dict["algorithm"])
 
         if "crossover" in config_dict:
             crossover_dict = config_dict["crossover"]
@@ -317,53 +370,7 @@ class AlgorithmConfig:
                 selection_dict["method"] = SelectionMethod(selection_dict["method"])
             config_dict["selection"] = SelectionConfig(**selection_dict)
 
-        return cls(**config_dict)
-
-    def save_json(self, filepath: Path | str) -> None:
-        """
-        Saves the configuration to a JSON file.
-
-        :param filepath: The path to the JSON file where the configuration will be saved. The file will have a structure that can be loaded back using `load_json()`.
-        """
-        filepath = Path(filepath)
-        with open(filepath, "w") as f:
-            json.dump(self.to_dict(), f, indent=2)
-
-    def save_yaml(self, filepath: Path | str) -> None:
-        """
-        Saves the configuration to a YAML file.
-
-        :param filepath: The path to the YAML file where the configuration will be saved. The file will have a structure that can be loaded back using `load_yaml()`.
-        """
-        filepath = Path(filepath)
-        with open(filepath, "w") as f:
-            yaml.dump(self.to_dict(), f, default_flow_style=False)
-
-    @classmethod
-    def load_json(cls, filepath: Path | str) -> "AlgorithmConfig":
-        """
-        Loads the configuration from a JSON file.
-
-        :param filepath: The path to the JSON file containing the configuration. The file should have the same structure as the one produced by `save_json()`.
-        :return: An instance of `AlgorithmConfig` with the parameters set according to the provided JSON file.
-        """
-        filepath = Path(filepath)
-        with open(filepath, "r") as f:
-            config_dict = json.load(f)
-        return cls.from_dict(config_dict)
-
-    @classmethod
-    def load_yaml(cls, filepath: Path | str) -> "AlgorithmConfig":
-        """
-        Loads the configuration from a YAML file.
-
-        :param filepath: The path to the YAML file containing the configuration. The file should have the same structure as the one produced by `save_yaml()`.
-        :return: An instance of `AlgorithmConfig` with the parameters set according to the provided YAML file.
-        """
-        filepath = Path(filepath)
-        with open(filepath, "r") as f:
-            config_dict = yaml.safe_load(f)
-        return cls.from_dict(config_dict)
+        return config_dict
 
     def get_algorithm_params(self) -> Dict[str, Any]:
         """Returns the necessary parameters for the evolutionary algorithm."""
@@ -375,13 +382,42 @@ class AlgorithmConfig:
         }
 
         if self.algorithm in [
-            AlgorithmMethod.MU_PLUS_LAMBDA,
-            AlgorithmMethod.MU_COMMA_LAMBDA,
+            NeurAlgMethod.MU_PLUS_LAMBDA,
+            NeurAlgMethod.MU_COMMA_LAMBDA,
         ]:
             params["mu"] = self.mu
             params["lambda_"] = self.lambda_
 
         return params
+
+
+@dataclass
+class RLConfig(AlgorithmConfig):
+    """Base configuration for classic tabular RL experiments."""
+
+    algorithm: RLAlgMethod = RLAlgMethod.Q_LEARNING
+    n_training_episodes: int = 10_000
+    max_steps: int = 99
+    learning_rate: float = 0.7
+    gamma: float = 0.95
+    epsilon_start: float = 1.0
+    epsilon_end: float = 0.05
+    epsilon_decay: float = 0.0005
+    n_eval_episodes: int = 100
+    n_bins: int = 10  # For discretizing continuous state spaces
+    use_first_visit: bool = True  # Only used when algorithm == monte_carlo
+
+    def _to_serializable_dict(self, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Converts enum fields to serializable values."""
+        config_dict["algorithm"] = self.algorithm.value
+        return config_dict
+
+    @classmethod
+    def _from_serializable_dict(cls, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Converts serializable values to enum fields."""
+        if "algorithm" in config_dict:
+            config_dict["algorithm"] = RLAlgMethod(config_dict["algorithm"])
+        return config_dict
 
 
 @dataclass
@@ -392,8 +428,8 @@ class ExperimentConfig:
     env_kwargs: Dict[str, Any] = field(default_factory=dict)
     labels: Optional[List[List[str]]] = None
     architecture: List[int] = field(default_factory=lambda: [8, 6, 4])
-    algorithm: AlgorithmConfig = field(default_factory=AlgorithmConfig)
-    success_threshold: float = 0.0
+    algorithm: AlgorithmConfig = field(default_factory=NeurEvConfig)
+    success_threshold: Optional[float] = None
     experiments_dir: Path = Path("results")
 
     def to_dict(self) -> Dict[str, Any]:
@@ -417,9 +453,30 @@ class ExperimentConfig:
         :return: An instance of `ExperimentConfig` with the parameters set according to the provided dictionary.
         """
         if "algorithm" in config_dict:
-            config_dict["algorithm"] = AlgorithmConfig.from_dict(
-                config_dict["algorithm"]
-            )
+            algorithm_config = config_dict["algorithm"]
+            if not isinstance(algorithm_config, dict):
+                raise ValueError("'algorithm' configuration must be a dictionary")
+
+            algorithm_name = algorithm_config.get("algorithm")
+            if algorithm_name is None:
+                raise ValueError(
+                    "'algorithm.algorithm' is required to detect configuration type"
+                )
+
+            neur_ev_algorithms = {method.value for method in NeurAlgMethod}
+            rl_algorithms = {method.value for method in RLAlgMethod}
+
+            if algorithm_name in neur_ev_algorithms:
+                config_dict["algorithm"] = NeurEvConfig.from_dict(algorithm_config)
+            elif algorithm_name in rl_algorithms:
+                # rl_method = RLAlgMethod(algorithm_name)
+                # rl_config_cls = RL_CONFIG_CLASSES[rl_method]
+                config_dict["algorithm"] = RLConfig.from_dict(algorithm_config)
+            else:
+                valid_algorithms = sorted(neur_ev_algorithms | rl_algorithms)
+                raise ValueError(
+                    f"Unsupported algorithm '{algorithm_name}'. Supported values are: {valid_algorithms}"
+                )
         if "experiments_dir" in config_dict:
             config_dict["experiments_dir"] = Path(config_dict["experiments_dir"])
         return cls(**config_dict)
