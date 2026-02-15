@@ -1,3 +1,5 @@
+import inspect
+import json
 import pickle
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -5,6 +7,7 @@ from typing import Optional, Tuple, Union
 
 import gymnasium as gym
 import numpy as np
+import yaml
 from tqdm import tqdm
 
 
@@ -320,21 +323,116 @@ class BaseRLAgent(ABC):
 
         print(f"Q-table saved to {filepath}")
 
-    def load(self, filepath: Union[str, Path]) -> None:
+    @classmethod
+    def load(cls, filepath: Union[str, Path]) -> "BaseRLAgent":
         """
-        Load a Q-table from a file.
+        Load a trained agent from a file or experiment directory.
 
-        :param filepath: Path to load the Q-table from
+        If `filepath` is a directory, it must contain a `q_table.pkl` file and at
+        least one config file (`config.yaml`, or `config.json`).
+        If `filepath` is a file, it is treated as the Q-table and the config is
+        searched in the same directory.
+
+        :param filepath: Path to an experiment directory or to `q_table.pkl`
+        :return: Reconstructed agent instance with loaded Q-table
         """
         filepath = Path(filepath)
 
-        if not filepath.exists():
-            raise FileNotFoundError(f"Q-table file not found: {filepath}")
+        if filepath.is_dir():
+            experiment_dir = filepath
+            q_table_path = experiment_dir / "q_table.pkl"
+        else:
+            q_table_path = filepath
+            experiment_dir = q_table_path.parent
 
-        with open(filepath, "rb") as f:
-            self.q_table = pickle.load(f)
+        if not q_table_path.exists():
+            raise FileNotFoundError(f"Q-table file not found: {q_table_path}")
 
-        print(f"Q-table loaded from {filepath}")
+        config_path = None
+        for candidate_name in ("config.yaml", "config.json"):
+            candidate = experiment_dir / candidate_name
+            if candidate.exists():
+                config_path = candidate
+                break
+
+        if config_path is None:
+            raise FileNotFoundError(
+                "Configuration file not found. Expected one of: config.yaml, config.json"
+            )
+
+        if config_path.suffix.lower() in {".yaml", ".yml"}:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config_data = yaml.safe_load(f)
+        else:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config_data = json.load(f)
+
+        if not isinstance(config_data, dict):
+            raise ValueError(f"Invalid config format in {config_path}")
+
+        env_name = config_data.get("environment_name")
+        if env_name is None:
+            raise ValueError(
+                f"Missing 'environment_name' in configuration file: {config_path}"
+            )
+
+        env_kwargs = config_data.get(
+            "env_kwargs", config_data.get("environment_kwargs", {})
+        )
+        if env_kwargs is None:
+            env_kwargs = {}
+
+        algorithm_cfg = config_data.get("algorithm", config_data)
+        if not isinstance(algorithm_cfg, dict):
+            raise ValueError(
+                "Invalid 'algorithm' section in configuration. Expected a dictionary"
+            )
+
+        learning_rate = algorithm_cfg.get("learning_rate", 0.7)
+        gamma = algorithm_cfg.get("gamma", 0.95)
+        epsilon_start = algorithm_cfg.get("epsilon_start", 1.0)
+        epsilon_end = algorithm_cfg.get("epsilon_end", 0.05)
+        epsilon_decay = algorithm_cfg.get("epsilon_decay", 0.0005)
+        n_bins = algorithm_cfg.get("n_bins", 10)
+        use_first_visit = algorithm_cfg.get("use_first_visit", True)
+
+        env = gym.make(env_name, **env_kwargs)
+
+        discretizer = None
+        if isinstance(env.observation_space, gym.spaces.Box):
+            discretizer = ObservationDiscretizer(env.observation_space, n_bins=n_bins)
+
+        init_kwargs = {
+            "env": env,
+            "learning_rate": learning_rate,
+            "gamma": gamma,
+            "epsilon_start": epsilon_start,
+            "epsilon_end": epsilon_end,
+            "epsilon_decay": epsilon_decay,
+            "discretizer": discretizer,
+        }
+
+        signature = inspect.signature(cls.__init__)
+        if "use_first_visit" in signature.parameters:
+            init_kwargs["use_first_visit"] = use_first_visit
+
+        with open(q_table_path, "rb") as f:
+            q_table = pickle.load(f)
+
+        instance = cls(**init_kwargs)
+
+        expected_shape = (instance.state_space_size, instance.action_space_size)
+        if getattr(q_table, "shape", None) != expected_shape:
+            raise ValueError(
+                f"Loaded Q-table shape {getattr(q_table, 'shape', None)} does not match expected {expected_shape}"
+            )
+
+        instance.q_table = q_table
+
+        print(f"Q-table loaded from {q_table_path}")
+        print(f"Configuration loaded from {config_path}")
+
+        return instance
 
     def get_policy(self) -> np.ndarray:
         """

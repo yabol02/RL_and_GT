@@ -13,6 +13,12 @@ import pandas as pd
 from deap import base, creator, tools
 from loky import get_reusable_executor
 
+from .agents_rl import (
+    MonteCarloAgent,
+    ObservationDiscretizer,
+    QLearningAgent,
+    SARSAAgent,
+)
 from .config_exp import (
     ALGORITHM_FUNCTIONS,
     CROSSOVER_FUNCTIONS,
@@ -454,3 +460,214 @@ def _evaluate_agent(
         fitness = mean_reward + success_bonus - (0.1 * std_reward)
 
     return fitness, successes, mean_reward, std_reward
+
+
+class ReinforcementLearningExperiment:
+    """
+    Docstring for ReinforcementLearningExperiment
+    """
+
+    def __init__(self, config: ExperimentConfig):
+        """
+        Initializes the reinforcement learning experiment.
+
+        :param config: Experiment configuration object containing all settings for the experiment
+        """
+        self.config = config
+        self.env = gym.make(self.config.environment_name, **self.config.env_kwargs)
+        self.discretizer = None
+
+    def _setup_experiment_dir(self) -> Path:
+        """Creates and returns the experiment directory."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        exp_dir = (
+            self.config.experiments_dir
+            / f"{self.config.environment_name}"
+            / f"{self.config.algorithm.algorithm.value}_{timestamp}"
+        )
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        return exp_dir
+
+    def _save_experiment_config(self) -> None:
+        """Saves the experiment configuration."""
+        config_dict = self.config.to_dict()
+        config_dict["timestamp"] = datetime.now().isoformat()
+
+        self.config.save_json(self.exp_dir / "config.json")
+        self.config.save_yaml(self.exp_dir / "config.yaml")
+
+    def _check_for_discretizer(self, env: gym.Env) -> None:
+        """
+        Checks if a discretizer is needed for the environment's observation space and creates it if necessary.
+
+        :param env: The environment to check for discretization needs
+        """
+        obs_space = self.env.observation_space
+        if type(obs_space) == gym.spaces.Box:
+            print(f"\nCreating discretizer for continuous observation space...")
+            print(f"Observation space to discretize: {obs_space}")
+            print(f"Number of bins per dimension: {self.config.n_bins}")
+            self.discretizer = ObservationDiscretizer(
+                obs_space, n_bins=self.config.n_bins
+            )
+            print(f"Total discrete states: {self.discretizer.n_states}")
+        else:
+            if isinstance(obs_space, gym.spaces.Discrete):
+                print(f"Number of states: {obs_space.n}")
+            else:
+                print(f"Observation space shape: {obs_space.shape}")
+
+    def plot_training_results(
+        self, episode_rewards: np.ndarray, window_size: int = 100
+    ) -> None:
+        """
+        Plot training results with moving average.
+
+        :param episode_rewards: Array of rewards per episode
+        :param window_size: Window size for moving average
+        """
+        plt.figure(figsize=(12, 5))
+
+        plt.subplot(1, 2, 1)
+        plt.plot(episode_rewards, alpha=0.3, label="Episode Reward")
+
+        if len(episode_rewards) >= window_size:
+            moving_avg = np.convolve(
+                episode_rewards, np.ones(window_size) / window_size, mode="valid"
+            )
+            plt.plot(
+                range(window_size - 1, len(episode_rewards)),
+                moving_avg,
+                label=f"{window_size}-Episode Moving Average",
+                linewidth=2,
+            )
+
+        plt.xlabel("Episode")
+        plt.ylabel("Reward")
+        plt.title("Training Progress")
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+
+        plt.subplot(1, 2, 2)
+        plt.hist(episode_rewards, bins=50, edgecolor="black", alpha=0.7)
+        plt.xlabel("Reward")
+        plt.ylabel("Frequency")
+        plt.title("Reward Distribution")
+        plt.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig(
+            f"{self.exp_dir}/training_results.png", dpi=150, bbox_inches="tight"
+        )
+        plt.close()
+
+    def run(self) -> dict:
+        """
+        Runs the reinforcement learning experiment.
+
+        :return: Dictionary containing results and metrics from the experiment
+        """
+        self.exp_dir = self._setup_experiment_dir()
+
+        print("=" * 80)
+        print(f"EXPERIMENT: {self.exp_dir.name}")
+        print("=" * 80)
+
+        if self.config.algorithm.random_seed is not None:
+            print(f"Seed: {self.config.algorithm.random_seed}")
+
+        self._save_experiment_config()
+
+        start = time.time()
+        print(f"STARTING TRAINING - {self.config.environment_name}")
+        print("-" * 70)
+        print(f"Algorithm: {self.config.algorithm.algorithm.value}")
+        print(f"Environment: {self.config.environment_name}")
+        print(f"Environment kwargs: {self.config.env_kwargs}")
+        print(f"Training episodes: {self.config.algorithm.n_training_episodes}")
+        print(f"Learning rate: {self.config.algorithm.learning_rate}")
+        print(f"Gamma: {self.config.algorithm.gamma}")
+        print(
+            f"Epsilon: {self.config.algorithm.epsilon_start} -> {self.config.algorithm.epsilon_end} (decay: {self.config.algorithm.epsilon_decay})"
+        )
+        print("=" * 70)
+
+        print("ENVIRONMENT INFORMATION")
+        print("-" * 70)
+        print(f"Observation space: {self.env.observation_space}")
+        print(f"Action space: {self.env.action_space}")
+        print(f"Number of actions: {self.env.action_space.n}")
+
+        self._check_for_discretizer(self.env)
+
+        print("=" * 70 + "\n")
+
+        # Create agent
+        if self.config.algorithm.algorithm.value == "q_learning":
+            self.agent = QLearningAgent(
+                env=self.env,
+                learning_rate=self.config.algorithm.learning_rate,
+                gamma=self.config.algorithm.gamma,
+                epsilon_start=self.config.algorithm.epsilon_start,
+                epsilon_end=self.config.algorithm.epsilon_end,
+                epsilon_decay=self.config.algorithm.epsilon_decay,
+                discretizer=self.discretizer,
+            )
+        elif self.config.algorithm.algorithm.value == "sarsa":
+            self.agent = SARSAAgent(
+                env=self.env,
+                learning_rate=self.config.algorithm.learning_rate,
+                gamma=self.config.algorithm.gamma,
+                epsilon_start=self.config.algorithm.epsilon_start,
+                epsilon_end=self.config.algorithm.epsilon_end,
+                epsilon_decay=self.config.algorithm.epsilon_decay,
+                discretizer=self.discretizer,
+            )
+        elif self.config.algorithm.algorithm.value == "monte_carlo":
+            self.agent = MonteCarloAgent(
+                env=self.env,
+                learning_rate=self.config.algorithm.learning_rate,
+                gamma=self.config.algorithm.gamma,
+                epsilon_start=self.config.algorithm.epsilon_start,
+                epsilon_end=self.config.algorithm.epsilon_end,
+                epsilon_decay=self.config.algorithm.epsilon_decay,
+                discretizer=self.discretizer,
+            )
+        else:
+            raise ValueError(f"Unsupported algorithm: {self.config.algorithm}")
+
+        episode_rewards = self.agent.train(
+            n_episodes=self.config.algorithm.n_training_episodes,
+            max_steps=self.config.algorithm.max_steps,
+            verbose=True,
+        )
+
+        self.agent.print_statistics()
+
+        # Evaluation
+        print("Starting evaluation...\n")
+        mean_reward, std_reward, eval_rewards = self.agent.evaluate(
+            n_episodes=self.config.algorithm.n_eval_episodes,
+            max_steps=self.config.algorithm.max_steps,
+            render=False,
+            verbose=True,
+        )
+
+        print("\n" + "=" * 70)
+        print("EVALUATION RESULTS")
+        print("=" * 70)
+        print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
+        print(f"Min reward: {np.min(eval_rewards):.2f}")
+        print(f"Max reward: {np.max(eval_rewards):.2f}")
+        print(
+            f"Success rate: {np.sum(eval_rewards > 0) / len(eval_rewards) * 100:.1f}%"
+        )
+        print("=" * 70 + "\n")
+
+        print("Generating training visualization...")
+        self.plot_training_results(episode_rewards, window_size=100)
+        self.agent.save(self.exp_dir.joinpath("q_table.pkl"))
+
+    def load_agent(self, path: str) -> None:
+        """Loads a trained agent from a file."""
+        self.agent.load(path)

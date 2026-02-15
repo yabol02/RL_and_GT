@@ -1,0 +1,29 @@
+environment_name: "Taxi-v3"
+
+env_kwargs:
+  is_rainy: true
+  fickle_passenger: true
+
+labels: null
+
+architecture:
+  - 8
+  - 6
+  - 4
+
+
+algorithm:
+  algorithm: "q_learning"
+  n_training_episodes: 10000
+  max_steps: 100
+  learning_rate: 0.7
+  gamma: 0.95
+  epsilon_start: 1.0
+  epsilon_end: 0.05
+  epsilon_decay: 0.0005
+  n_eval_episodes: 100
+  n_bins: 10
+  use_first_visit: true
+
+success_threshold: null
+experiments_dir: results

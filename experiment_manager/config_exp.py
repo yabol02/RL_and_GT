@@ -406,10 +406,12 @@ class RLConfig(AlgorithmConfig):
     n_eval_episodes: int = 100
     n_bins: int = 10  # For discretizing continuous state spaces
     use_first_visit: bool = True  # Only used when algorithm == monte_carlo
+    random_seed: Optional[int] = None
 
     def _to_serializable_dict(self, config_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Converts enum fields to serializable values."""
         config_dict["algorithm"] = self.algorithm.value
+        config_dict["random_seed"] = self.random_seed
         return config_dict
 
     @classmethod
@@ -469,8 +471,6 @@ class ExperimentConfig:
             if algorithm_name in neur_ev_algorithms:
                 config_dict["algorithm"] = NeurEvConfig.from_dict(algorithm_config)
             elif algorithm_name in rl_algorithms:
-                # rl_method = RLAlgMethod(algorithm_name)
-                # rl_config_cls = RL_CONFIG_CLASSES[rl_method]
                 config_dict["algorithm"] = RLConfig.from_dict(algorithm_config)
             else:
                 valid_algorithms = sorted(neur_ev_algorithms | rl_algorithms)
