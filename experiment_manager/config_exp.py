@@ -184,6 +184,7 @@ class MutationConfig:
     low: Optional[float] = None  # For mutPolynomialBounded, mutUniformInt
     up: Optional[float] = None  # For mutPolynomialBounded, mutUniformInt
     eta: Optional[float] = None  # For mutPolynomialBounded
+    c: Optional[float] = None  # For mutESLogNormal
     others: Dict[str, Any] = (
         None  # For any additional parameters for custom mutation methods
     )
@@ -209,7 +210,8 @@ class MutationConfig:
             params["up"] = self.up or 100
             params["indpb"] = self.indpb
         elif self.method == MutationMethod.LOG_NORMAL_ES:
-            params["eta"] = self.eta or 20.0
+            params["c"] = self.c or 20.0
+            params["indpb"] = self.indpb
         elif self.method == MutationMethod.CUSTOM and self.others is not None:
             params.update(self.others)
         return params

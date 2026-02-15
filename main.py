@@ -12,7 +12,7 @@ from experiment_manager.experiment import (
 
 
 def main():
-    file = "config_2.yaml"
+    file = "config_ll_3.yaml"
 
     # Option 1: Load configuration from JSON/YAML file
     config = ExperimentConfig.load_yaml(os.path.join("configurations", file))
@@ -26,17 +26,17 @@ def main():
     # manager.load_and_add("default", "config_1.yaml")
     # config = manager.get_config("default")
 
-    if config.algorithm in [
+    if config.algorithm.algorithm.value in [
         "simple",
         "mu_plus_lambda",
         "mu_comma_lambda",
         "generate_update",
     ]:
         experiment = NeuroevolutionExperiment(config)
-    elif config.algorithm in ["q_learning", "sarsa", "monte_carlo"]:
+    elif config.algorithm.algorithm.value in ["q_learning", "sarsa", "monte_carlo"]:
         experiment = ReinforcementLearningExperiment(config)
     else:
-        raise ValueError(f"Unsupported algorithm: {config.algorithm}")
+        raise ValueError(f"Unsupported algorithm: {config.algorithm.algorithm.value}")
 
     results = experiment.run()
     return results
