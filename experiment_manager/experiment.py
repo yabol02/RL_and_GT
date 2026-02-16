@@ -673,6 +673,8 @@ class ReinforcementLearningExperiment:
             verbose=True,
         )
 
+        self.save_training_logs(episode_rewards, window_size=100)
+
         self.agent.print_statistics()
 
         # Evaluation
