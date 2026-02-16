@@ -7,7 +7,7 @@ from .config_exp import ExperimentConfig
 class ConfigManager:
     """Managers experiment configurations, allowing to save, load, compare and list them."""
 
-    def __init__(self, config_dir: Path = Path("configs")):
+    def __init__(self, config_dir: Path = Path("configurations")):
         """
         Initializes the configuration manager.
 
@@ -17,14 +17,32 @@ class ConfigManager:
         self.config_dir.mkdir(exist_ok=True)
         self._configs: Dict[str, ExperimentConfig] = {}
 
-    def add_config(self, name: str, config: ExperimentConfig) -> None:
+        self.reload_from_disk()
+
+    def reload_from_disk(self) -> None:
+        """Scans the configuration directory and loads all configurations found on disk."""
+        self._configs.clear()
+        for filepath in self.config_dir.iterdir():
+            if filepath.suffix in [".yaml", ".yml", ".json"]:
+                name = filepath.stem
+                try:
+                    self._configs[name] = self.load_config(filepath)
+                except Exception as e:
+                    print(f"Error cargando {filepath}: {e}")
+
+    def add_config(
+        self, name: str, config: ExperimentConfig, format: str = "yaml"
+    ) -> Path:
         """
         Adds a configuration to the manager.
 
         :param name: Name of the configuration
         :param config: `ExperimentConfig` instance to add
+        :param format: File format to save ('yaml' or 'json')
+        :return: Path to the saved configuration file
         """
         self._configs[name] = config
+        return self.save_config(name, format)
 
     def get_config(self, name: str) -> Optional[ExperimentConfig]:
         """
@@ -62,14 +80,17 @@ class ConfigManager:
 
         return filepath
 
-    def load_config(self, filepath: Path | str) -> ExperimentConfig:
+    def load_config(
+        self, filename: Path | str, filepath: Path | str = None
+    ) -> ExperimentConfig:
         """
         Loads a configuration from a file.
 
-        :param filepath: Path to the configuration file
+        :param filename: Path to the configuration file
         :return: Loaded `ExperimentConfig` instance
         """
-        filepath = Path(filepath)
+        dir = self.config_dir if filepath is None else Path(filepath)
+        filepath = dir / filename
 
         if filepath.suffix == ".yaml" or filepath.suffix == ".yml":
             return ExperimentConfig.load_yaml(filepath)
