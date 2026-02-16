@@ -325,7 +325,7 @@ class NeuroevolutionExperiment:
                     )
 
             df_metrics = pd.DataFrame(metrics_data)
-            df_metrics.to_csv(self.exp_dir / "metrics_per_generation.csv", index=False)
+            df_metrics.to_csv(self.exp_dir / "training_logs.csv", index=False)
 
             self._save_hall_of_fame(hall_of_fame)
             self._plot_evolution(logs)
@@ -560,6 +560,37 @@ class ReinforcementLearningExperiment:
             f"{self.exp_dir}/training_results.png", dpi=150, bbox_inches="tight"
         )
         plt.close()
+
+    def save_training_logs(
+        self, episode_rewards: np.ndarray, window_size: int = 100
+    ) -> None:
+        """
+        Saves training logs every `window_size` episodes to a CSV file.
+
+        For each block of `window_size` episodes, it stores the mean, the median, and the standard deviation
+
+        :param episode_rewards: Array of rewards per episode
+        :param window_size: Number of episodes per logging block
+        """
+        rewards = np.asarray(episode_rewards, dtype=float)
+        metrics_data = []
+
+        for end_episode in range(window_size, len(rewards) + 1, window_size):
+            start_episode = end_episode - window_size
+            block_rewards = rewards[start_episode:end_episode]
+            metrics_data.append(
+                {
+                    "iteration": end_episode,
+                    "window_start": start_episode + 1,
+                    "window_end": end_episode,
+                    "mean": float(np.mean(block_rewards)),
+                    "median": float(np.median(block_rewards)),
+                    "std": float(np.std(block_rewards)),
+                }
+            )
+
+        df_metrics = pd.DataFrame(metrics_data)
+        df_metrics.to_csv(self.exp_dir / "training_logs.csv", index=False)
 
     def run(self) -> dict:
         """
